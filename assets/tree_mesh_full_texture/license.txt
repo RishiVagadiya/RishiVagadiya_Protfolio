@@ -1,0 +1,11 @@
+Model Information:
+* title:	Tree Mesh full texture
+* source:	https://sketchfab.com/3d-models/tree-mesh-full-texture-caee7cbfada44a9ca78543a7e86a335c
+* author:	endlessvoidmc (https://sketchfab.com/endlessvoidmc)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Tree Mesh full texture" (https://sketchfab.com/3d-models/tree-mesh-full-texture-caee7cbfada44a9ca78543a7e86a335c) by endlessvoidmc (https://sketchfab.com/endlessvoidmc) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
