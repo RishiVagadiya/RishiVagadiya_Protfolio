@@ -53,8 +53,9 @@ export function initWorld(canvas) {
 
   const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 300);
   // Camera relative position to the bike will be maintained in the render loop
-  const camOffset = new THREE.Vector3(1.5, 2.3, 6.0);
-  const camLookOffset = new THREE.Vector3(-0.4, 1.1, -4);
+  // Adjusted: shifted right, lowered, and angled up to show full building tops (matching reference 2)
+  const camOffset = new THREE.Vector3(-0.4, 2.0, 7.8);
+  const camLookOffset = new THREE.Vector3(-0.2, 0.7, -1);
 
   // ---- lights ----
   scene.add(new THREE.HemisphereLight(0xbfd0ff, 0x2a2338, 0.7));

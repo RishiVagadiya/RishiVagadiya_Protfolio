@@ -1,6 +1,6 @@
-import { initLiquidName } from "./liquidText.js?v=2";
-import { initWorld } from "./world.js?v=6";
-import * as SFX from "./sound.js?v=2";
+import { initLiquidName } from "./liquidText.js?v=12";
+import { initWorld } from "./world.js?v=12";
+import * as SFX from "./sound.js?v=12";
 
 /* -------------------- content -------------------- */
 const PROJECTS = [
@@ -273,7 +273,16 @@ let lastLockedSection = null;
 
 // Handle Wheel
 window.addEventListener("wheel", (e) => {
-  if (isGamePlaying || isPanelLocked) return;
+  if (isGamePlaying) return;
+  
+  if (isPanelLocked) {
+    // Unlock if user scrolls while card is active
+    isPanelLocked = false;
+    if (activeSection) {
+      document.getElementById(activeSection)?.classList.remove("panel-active");
+    }
+  }
+
   targetScroll += e.deltaY * 0.5;
   targetScroll = Math.max(0, Math.min(targetScroll, MAX_SCROLL));
 }, { passive: true });
@@ -282,7 +291,16 @@ window.addEventListener("wheel", (e) => {
 let ty = 0;
 window.addEventListener("touchstart", e => { ty = e.touches[0].clientY; }, { passive: true });
 window.addEventListener("touchmove", e => {
-  if (isGamePlaying || isPanelLocked) return;
+  if (isGamePlaying) return;
+
+  if (isPanelLocked) {
+    // Unlock if user swipes while card is active
+    isPanelLocked = false;
+    if (activeSection) {
+      document.getElementById(activeSection)?.classList.remove("panel-active");
+    }
+  }
+
   const dy = ty - e.touches[0].clientY;
   targetScroll += dy * 1.5;
   targetScroll = Math.max(0, Math.min(targetScroll, MAX_SCROLL));
