@@ -318,7 +318,8 @@ body>*:not(#scene):not(#loader):not(#nav):not(#ui-layer):not(.modal):not(#chat-t
   bottom: 195px; /* Shifted up to clear the new button position */
   right: 25px;
   width: 380px;
-  height: 520px;
+  height: 440px;
+  max-height: calc(100vh - 230px);
   background: rgba(9, 11, 20, 0.95);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -526,7 +527,8 @@ body>*:not(#scene):not(#loader):not(#nav):not(#ui-layer):not(.modal):not(#chat-t
     width: calc(100vw - 40px);
     right: 20px;
     bottom: 185px;
-    height: 460px;
+    height: 400px;
+    max-height: calc(100vh - 210px);
   }
 }
 

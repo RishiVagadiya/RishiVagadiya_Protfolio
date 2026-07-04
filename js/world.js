@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
-const MODEL_URL = "assets/bicycle_game_asset.glb";
+const MODEL_URL = "/assets/bicycle_game_asset.glb";
 const MODEL_SCALE = 1;
 const MODEL_Y = 0;
 
@@ -118,13 +118,13 @@ export function initWorld(canvas) {
   let customTreeModel2 = null;
   const treePlaceholders = [];
 
-  loader.load("assets/ginkgo_tree.glb", (gltf) => {
+  loader.load("/assets/ginkgo_tree.glb", (gltf) => {
     ginkgoTreeModel = gltf.scene;
     prepareTreeModel(ginkgoTreeModel, 5.2);
     replacePlaceholdersWithModel(ginkgoTreeModel, "ginkgo");
   });
 
-  loader.load("assets/tree_mesh_full_texture/scene.gltf", (gltf) => {
+  loader.load("/assets/tree_mesh_full_texture/scene.gltf", (gltf) => {
     customTreeModel2 = gltf.scene;
     prepareTreeModel(customTreeModel2, 5.8);
     replacePlaceholdersWithModel(customTreeModel2, "mesh_tree");
@@ -847,7 +847,7 @@ export function initWorld(canvas) {
       }
 
       // Load custom driver character
-      new GLTFLoader().load("assets/driver.glb", (driverGltf) => {
+      new GLTFLoader().load("/assets/driver.glb", (driverGltf) => {
         const mDriver = driverGltf.scene;
 
         // Hide the procedural rider completely since we now have the 3D character!

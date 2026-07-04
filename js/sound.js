@@ -13,7 +13,7 @@ async function loadDrivingSound() {
   if (drivingBuffer || isLoadingSound) return;
   isLoadingSound = true;
   try {
-    const res = await fetch("/bycycle driving sound.wav");
+    const res = await fetch("/bycycle_driving_sound.wav");
     const arrayBuffer = await res.arrayBuffer();
     drivingBuffer = await ctx.decodeAudioData(arrayBuffer);
   } catch (err) {

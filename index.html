@@ -162,10 +162,22 @@
       <div id="modalBody"></div>
     </div>
   </div>
-
+  <!-- Suggestion Modal -->
+  <div id="suggestModal" class="modal" hidden>
+    <div class="modal-card">
+      <button class="modal-x" id="suggestModalX" data-sound="click">✕</button>
+      <h3>Suggest a Project Idea</h3>
+      <textarea id="suggestInput" placeholder="Describe your project idea for Rishi..." rows="4"></textarea><br>
+      <button id="suggestSubmit" class="play-btn">Send Suggestion</button>
+    </div>
+  </div>
   <!-- Chatbot Trigger Button -->
   <button id="chat-toggle" class="chat-btn" data-sound="click" aria-label="Open Chat">
     <img src="assets/rr_chatboat.png" alt="AI Chatbot" />
+  </button>
+  <!-- Suggest a Project Trigger Button -->
+  <button id="suggest-toggle" class="chat-btn" data-sound="click" aria-label="Suggest a Project">
+    💡 Suggest
   </button>
 
   <!-- Chatbot Container -->

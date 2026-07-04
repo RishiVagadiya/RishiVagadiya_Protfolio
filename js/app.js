@@ -273,16 +273,8 @@ let lastLockedSection = null;
 
 // Handle Wheel
 window.addEventListener("wheel", (e) => {
-  if (isGamePlaying) return;
+  if (isGamePlaying || isPanelLocked) return;
   
-  if (isPanelLocked) {
-    // Unlock if user scrolls while card is active
-    isPanelLocked = false;
-    if (activeSection) {
-      document.getElementById(activeSection)?.classList.remove("panel-active");
-    }
-  }
-
   targetScroll += e.deltaY * 0.5;
   targetScroll = Math.max(0, Math.min(targetScroll, MAX_SCROLL));
 }, { passive: true });
@@ -291,15 +283,7 @@ window.addEventListener("wheel", (e) => {
 let ty = 0;
 window.addEventListener("touchstart", e => { ty = e.touches[0].clientY; }, { passive: true });
 window.addEventListener("touchmove", e => {
-  if (isGamePlaying) return;
-
-  if (isPanelLocked) {
-    // Unlock if user swipes while card is active
-    isPanelLocked = false;
-    if (activeSection) {
-      document.getElementById(activeSection)?.classList.remove("panel-active");
-    }
-  }
+  if (isGamePlaying || isPanelLocked) return;
 
   const dy = ty - e.touches[0].clientY;
   targetScroll += dy * 1.5;
