@@ -20,10 +20,16 @@ const GRIP_CURL    = 0.5;    // how far the fingers curl around the bar (radians
 const GRIP_THUMB   = 0.3;    // thumb curl
 
 export function initWorld(canvas) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  const isMobile = /Mobi|Android|iPhone|iPad|Macintosh/i.test(navigator.userAgent) && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+
+  const renderer = new THREE.WebGLRenderer({ 
+    canvas, 
+    antialias: !isMobile, 
+    powerPreference: "high-performance" 
+  });
+  renderer.setPixelRatio(isMobile ? 1.0 : Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = !isMobile;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
@@ -113,7 +119,14 @@ export function initWorld(canvas) {
 
   // ================= SCENERY =================
   // Tree models loading
-  const loader = new GLTFLoader();
+  const loadingManager = new THREE.LoadingManager();
+  loadingManager.onLoad = () => {
+    const loaderEl = document.getElementById("loader");
+    if (loaderEl) {
+      loaderEl.classList.add("hide");
+    }
+  };
+  const loader = new GLTFLoader(loadingManager);
   let ginkgoTreeModel = null;
   let customTreeModel2 = null;
   const treePlaceholders = [];
@@ -124,7 +137,7 @@ export function initWorld(canvas) {
     replacePlaceholdersWithModel(ginkgoTreeModel, "ginkgo");
   });
 
-  loader.load("/assets/tree_mesh_full_texture/scene.gltf", (gltf) => {
+  loader.load("/assets/tree_mesh.glb", (gltf) => {
     customTreeModel2 = gltf.scene;
     prepareTreeModel(customTreeModel2, 5.8);
     replacePlaceholdersWithModel(customTreeModel2, "mesh_tree");
@@ -740,7 +753,7 @@ export function initWorld(canvas) {
 
   // Optional GLB drop-in
   if (MODEL_URL) {
-    new GLTFLoader().load(MODEL_URL, (gltf) => {
+    loader.load(MODEL_URL, (gltf) => {
       const m = gltf.scene;
       m.scale.setScalar(MODEL_SCALE);
       m.position.y += MODEL_Y;
@@ -847,7 +860,7 @@ export function initWorld(canvas) {
       }
 
       // Load custom driver character
-      new GLTFLoader().load("/assets/driver.glb", (driverGltf) => {
+      loader.load("/assets/driver.glb", (driverGltf) => {
         const mDriver = driverGltf.scene;
 
         // Hide the procedural rider completely since we now have the 3D character!
@@ -1058,17 +1071,18 @@ export function initWorld(canvas) {
     if (crankPivot) crankPivot.rotation.x = pedalAngle;   // spin the visible crank + pedals
     if (driverIK) {
       bike.updateMatrixWorld(true);
+      const ikIter = isMobile ? 4 : 6;
       // hands -> measured handlebar grips (bike-local -> world)
       if (driverIK.armL && gripLAnchor)
-        solveCCD(driverIK.armL, bike.localToWorld(_ikTargetA.copy(gripLAnchor)), 8);
+        solveCCD(driverIK.armL, bike.localToWorld(_ikTargetA.copy(gripLAnchor)), ikIter);
       if (driverIK.armR && gripRAnchor)
-        solveCCD(driverIK.armR, bike.localToWorld(_ikTargetB.copy(gripRAnchor)), 8);
+        solveCCD(driverIK.armR, bike.localToWorld(_ikTargetB.copy(gripRAnchor)), ikIter);
       // feet -> live world position of the actual pedal geometry, so they can
       // never drift off the pedals no matter how the crank is spinning
       if (driverIK.legL && pedalTargets.L)
-        solveCCD(driverIK.legL, pedalTargets.L.node.localToWorld(_ikTargetA.copy(pedalTargets.L.localCenter)), 8);
+        solveCCD(driverIK.legL, pedalTargets.L.node.localToWorld(_ikTargetA.copy(pedalTargets.L.localCenter)), ikIter);
       if (driverIK.legR && pedalTargets.R)
-        solveCCD(driverIK.legR, pedalTargets.R.node.localToWorld(_ikTargetB.copy(pedalTargets.R.localCenter)), 8);
+        solveCCD(driverIK.legR, pedalTargets.R.node.localToWorld(_ikTargetB.copy(pedalTargets.R.localCenter)), ikIter);
     }
     
     // Move sun with bike so shadows stay crisp

@@ -1,0 +1,7 @@
+const fs = require('fs');
+const lines = fs.readFileSync('js/world.js', 'utf8').split('\n');
+lines.forEach((line, idx) => {
+  if (line.toLowerCase().includes('gltfloader') || line.toLowerCase().includes('loader.load')) {
+    console.log(`${idx + 1}: ${line.trim()}`);
+  }
+});

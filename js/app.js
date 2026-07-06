@@ -233,11 +233,10 @@ document.addEventListener("click", (e) => {
 initLiquidName(document.getElementById("liquidName"), "Rishi Vagadiya");
 const world = initWorld(document.getElementById("scene"));
 
-/* hide loader */
-window.addEventListener("load", () => {
-  setTimeout(() => document.getElementById("loader").classList.add("hide"), 500);
-});
-setTimeout(() => document.getElementById("loader").classList.add("hide"), 2500);
+/* hide loader - safety fallback in case models fail to load */
+setTimeout(() => {
+  document.getElementById("loader")?.classList.add("hide");
+}, 15000);
 
 /* ================== VIRTUAL SCROLL ENGINE ================== */
 // Track maps scroll to bike Z and active UI section
