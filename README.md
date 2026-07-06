@@ -1,5 +1,6 @@
 # Rishi Vagadiya — 3D Game Developer Portfolio
 
+
 An interactive 3D portfolio. The background is a **scroll-driven driving world**:
 a cyclist rides down an endless dusk road, and **scrolling the page makes them
 pedal** — wheels, crank, rider legs, scenery and the ride sound all speed up with
