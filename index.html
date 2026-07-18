@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script>
+    // Unregister any active service workers to prevent localhost caching or port hijacking
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+  </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Rishi Vagadiya</title>
@@ -15,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=VT323&family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="css/style.css?v=12" />
+  <link rel="stylesheet" href="css/style.css?v=41" />
 
   <!-- Three.js via importmap (CDN modules) -->
   <script type="importmap">
@@ -27,7 +37,86 @@
   }
   </script>
 </head>
-<body>
+<body class="intro-active">
+  <!-- Video Intro Overlay -->
+  <div id="intro-video-container">
+    <video id="intro-video" src="my_video.mp4" playsinline></video>
+    <button id="tap-to-play-btn">TAP TO PLAY ▶</button>
+  </div>
+
+  <script>
+    (function() {
+      window.introActive = true;
+      window.dismissIntro = function(autoScroll) {
+        if (!window.introActive) return;
+        window.introActive = false;
+
+        document.body.classList.remove("intro-active");
+
+        var introContainer = document.getElementById("intro-video-container");
+        var introVideo = document.getElementById("intro-video");
+        if (introContainer) {
+          introContainer.classList.add("hide");
+          setTimeout(function() {
+            if (introVideo) {
+              introVideo.pause();
+              introVideo.removeAttribute("src");
+              introVideo.load();
+            }
+            introContainer.remove();
+          }, 800);
+        }
+
+        var event = new CustomEvent("introDismissed", { detail: { autoScroll: !!autoScroll } });
+        window.dispatchEvent(event);
+      };
+
+      var tapBtn = document.getElementById("tap-to-play-btn");
+      var video = document.getElementById("intro-video");
+
+      if (tapBtn && video) {
+        var playAction = function(e) {
+          e.stopPropagation();
+          e.preventDefault();
+          video.muted = false;
+          var playPromise = video.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(function(err) {
+              console.warn("Video play failed:", err);
+            });
+          }
+          if (window.SFX && typeof window.SFX.unlock === "function") {
+            window.SFX.unlock();
+          } else {
+            window.tapToPlayClicked = true;
+          }
+          tapBtn.classList.add("hide");
+          setTimeout(function() {
+            tapBtn.style.display = "none";
+          }, 300);
+        };
+        tapBtn.addEventListener("click", playAction);
+        tapBtn.addEventListener("pointerdown", playAction);
+        tapBtn.addEventListener("touchstart", playAction, { passive: false });
+
+        video.addEventListener("ended", function() {
+          window.dismissIntro(true);
+        });
+
+        video.addEventListener("error", function() {
+          window.dismissIntro(false);
+        });
+      }
+
+      window.addEventListener("keydown", function() {
+        if (window.introActive) {
+          window.dismissIntro(false);
+        }
+      });
+    })();
+  </script>
+
+
   <!-- Loading overlay -->
   <div id="loader"><div class="loader-inner"><span class="ld-cube"></span><p>LOADING&nbsp;WORLD</p></div></div>
 
@@ -137,15 +226,37 @@
         <h2 class="sec-title"><span>05</span> Contact</h2>
         <p class="sec-sub">Let's build something amazing together.</p>
         <div class="contact-container-flex">
-          <div class="contact-box" style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:30px;">
-            <h3 style="font-size:22px;margin-bottom:10px;">Get in touch</h3>
-            <p style="color:var(--mut);line-height:1.6;margin-bottom:20px;">I'm currently open for new opportunities. Whether you have a question or just want to say hi, I'll try my best to get back to you!</p>
-            <a href="mailto:Rishivagadiya613@gmail.com" class="cta" style="display:inline-block;text-align:center;">SAY HELLO</a>
-            <div style="margin-top:30px;padding-top:20px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:20px;font-size:14px;">
-               <div><b>Email:</b> Rishivagadiya613@gmail.com</div>
-               <div><b>Phone:</b> +91 6352294215</div>
-               <div><b>Location:</b> Gujarat, India</div>
+          <div class="contact-box">
+            <span class="avail-badge"><span class="avail-dot"></span>OPEN TO WORK — UNITY / C# ROLES</span>
+            <h3 class="contact-heading">Hiring a Game Developer?<br/>Let's talk today.</h3>
+            <p class="contact-sub">Recruiter, studio or indie team — I'm actively looking for my next Unity role
+              and I reply <b>within 24 hours</b>. Reach me directly, no forms, no waiting.</p>
+
+            <div class="contact-cta-row">
+              <a href="mailto:Rishivagadiya613@gmail.com?subject=Unity%20Developer%20Opportunity%20for%20Rishi" class="cta" data-sound="click">✉&nbsp;EMAIL ME</a>
+              <a href="tel:+916352294215" class="cta cta-ghost" data-sound="click">📞&nbsp;CALL NOW</a>
+              <a href="https://wa.me/916352294215?text=Hi%20Rishi%2C%20I%20saw%20your%20portfolio%20and%20I%27d%20like%20to%20talk%21" target="_blank" rel="noreferrer" class="cta cta-ghost" data-sound="click">💬&nbsp;WHATSAPP</a>
             </div>
+
+            <div class="contact-info-list">
+              <a class="contact-row" href="mailto:Rishivagadiya613@gmail.com" data-sound="hover">
+                <span class="ci-ic">✉</span><span><b>Email</b><em>Rishivagadiya613@gmail.com</em></span>
+              </a>
+              <a class="contact-row" href="tel:+916352294215" data-sound="hover">
+                <span class="ci-ic">📞</span><span><b>Phone</b><em>+91 63522 94215</em></span>
+              </a>
+              <a class="contact-row" href="https://www.linkedin.com/in/rishivagadiya" target="_blank" rel="noreferrer" data-sound="hover">
+                <span class="ci-ic">in</span><span><b>LinkedIn</b><em>linkedin.com/in/rishivagadiya</em></span>
+              </a>
+              <a class="contact-row" href="https://github.com/RishiVagadiya" target="_blank" rel="noreferrer" data-sound="hover">
+                <span class="ci-ic">&lt;/&gt;</span><span><b>GitHub</b><em>github.com/RishiVagadiya</em></span>
+              </a>
+              <div class="contact-row contact-row-static">
+                <span class="ci-ic">📍</span><span><b>Location</b><em>Gujarat, India (IST) — open to remote &amp; relocation</em></span>
+              </div>
+            </div>
+
+            <a href="/rishi_resume.pdf" target="_blank" class="resume-line" data-sound="click">📄 Download Resume (PDF) →</a>
           </div>
           <div class="contact-image-wrap">
             <img src="assets/rr_contact.webp" alt="Contact Rishi" />
@@ -162,23 +273,19 @@
       <div id="modalBody"></div>
     </div>
   </div>
-  <!-- Suggestion Modal -->
-  <div id="suggestModal" class="modal" hidden>
-    <div class="modal-card">
-      <button class="modal-x" id="suggestModalX" data-sound="click">✕</button>
-      <h3>Suggest a Project Idea</h3>
-      <textarea id="suggestInput" placeholder="Describe your project idea for Rishi..." rows="4"></textarea><br>
-      <button id="suggestSubmit" class="play-btn">Send Suggestion</button>
-    </div>
+
+  <!-- Chatbot Welcome Bubble -->
+  <div id="chat-welcome-bubble" class="chat-welcome-bubble bubble-hidden">
+    <button id="bubble-close" class="bubble-close-btn" aria-label="Close message">&times;</button>
+    <div class="bubble-text">👾 Hey! I'm Rishi's AI. Ask me about his Unity 3D projects, C# skills, or availability to hire!</div>
   </div>
+
   <!-- Chatbot Trigger Button -->
   <button id="chat-toggle" class="chat-btn" data-sound="click" aria-label="Open Chat">
     <img src="assets/rr_chatboat.webp" alt="AI Chatbot" />
+    <span class="notification-dot"></span>
   </button>
-  <!-- Suggest a Project Trigger Button -->
-  <button id="suggest-toggle" class="chat-btn" data-sound="click" aria-label="Suggest a Project">
-    💡 Suggest
-  </button>
+
 
   <!-- Chatbot Container -->
   <div id="chat-container" class="chat-container chat-hidden">
@@ -189,23 +296,8 @@
         <h3>RISHI'S AI ASSISTANT</h3>
         <div class="chat-status"><span class="chat-dot"></span>ONLINE — ASK ANYTHING</div>
       </div>
-      <button id="chat-settings-btn" class="chat-settings-btn" title="API Settings">⚙️</button>
       <button id="chat-close" class="chat-close-btn">&times;</button>
     </header>
-
-    <!-- Settings Panel -->
-    <div id="chat-settings-panel" class="chat-settings-panel chat-hidden">
-      <h4>Chatbot Settings</h4>
-      <p style="font-size:11.5px;color:var(--mut);line-height:1.55;margin-bottom:12px;text-align:left;">By default, the assistant runs in-browser using a public Groq fallback API key. You can supply your own custom Groq API key here if needed. It will be saved locally in your browser.</p>
-      <div style="display:flex;flex-direction:column;gap:6px;">
-        <label for="chat-api-key" style="font-size:11px;color:var(--mut);text-align:left;font-weight:600;">GROQ API KEY (Optional):</label>
-        <input type="password" id="chat-api-key" placeholder="Enter gsk_..." style="width:100%;" />
-      </div>
-      <div class="settings-actions" style="margin-top:auto;">
-        <button id="chat-settings-save" class="chat-settings-save">Save & Close</button>
-        <button id="chat-settings-clear" class="chat-settings-clear">Reset Default</button>
-      </div>
-    </div>
 
     <!-- Message Area -->
     <div id="chat-messages" class="chat-messages">
@@ -240,6 +332,6 @@
     <iframe id="webgl-iframe" src="" allowfullscreen></iframe>
   </div>
 
-  <script type="module" src="js/app.js?v=12"></script>
+  <script type="module" src="js/app.js?v=40"></script>
 </body>
 </html>

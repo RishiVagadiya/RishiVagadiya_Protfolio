@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { Sky } from "three/addons/objects/Sky.js";
 
 const MODEL_URL = "/assets/bicycle_game_asset.glb";
 const MODEL_SCALE = 1;
@@ -27,57 +27,68 @@ export function initWorld(canvas) {
     antialias: !isMobile, 
     powerPreference: "high-performance" 
   });
-  renderer.setPixelRatio(isMobile ? 1.0 : Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.0));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = !isMobile;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
 
   const scene = new THREE.Scene();
 
-  // ---- sky gradient + fog ----
-  const sky = document.createElement("canvas"); sky.width = 8; sky.height = 256;
-  const sg = sky.getContext("2d").createLinearGradient(0, 0, 0, 256);
-  sg.addColorStop(0.0, "#0a0f22");
-  sg.addColorStop(0.45, "#20244d");
-  sg.addColorStop(0.72, "#6c4a8f");
-  sg.addColorStop(0.9, "#e0794f");
-  sg.addColorStop(1.0, "#f2b077");
-  const sc = sky.getContext("2d"); sc.fillStyle = sg; sc.fillRect(0, 0, 8, 256);
-  const skyTex = new THREE.CanvasTexture(sky);
-  skyTex.colorSpace = THREE.SRGBColorSpace;
-  scene.background = skyTex;
-  scene.fog = new THREE.Fog(0x6c4a8f, 22, 110); // extended fog for visibility
+  // ---- physically-based sunset sky (three.js Sky shader) ----
+  // Real atmospheric scattering with a low evening sun replaces the old flat
+  // gradient. The environment map for PBR reflections is generated FROM this
+  // sky, so water and building glass pick up genuine sunset tones.
+  const sky = new Sky();
+  sky.scale.setScalar(2000);
+  const skyUni = sky.material.uniforms;
+  skyUni.turbidity.value = 7;
+  skyUni.rayleigh.value = 2.2;
+  skyUni.mieCoefficient.value = 0.008;
+  skyUni.mieDirectionalG.value = 0.82;
+  const sunDir = new THREE.Vector3().setFromSphericalCoords(
+    1,
+    THREE.MathUtils.degToRad(90 - 5.5), // elevation: sun low on the horizon
+    THREE.MathUtils.degToRad(-62)       // azimuth: roughly matches the key light
+  );
+  skyUni.sunPosition.value.copy(sunDir);
+
+  // warm dusk haze: distant scenery melts into the horizon glow
+  scene.fog = new THREE.Fog(0xbd8a72, 30, 195);
 
   // Global materials
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x15181f, metalness: 0.6, roughness: 0.5 });
 
-  // PBR reflections
+  // PBR reflections generated from the sunset sky itself
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const envScene = new THREE.Scene();
+  envScene.add(sky);
+  scene.environment = pmrem.fromScene(envScene).texture;
+  scene.add(sky); // re-parent the sky into the visible world
 
-  const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 300);
+  const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 900);
   // Camera relative position to the bike will be maintained in the render loop
   // Adjusted: shifted right, lowered, and angled up to show full building tops (matching reference 2)
   const camOffset = new THREE.Vector3(-0.4, 2.0, 7.8);
   const camLookOffset = new THREE.Vector3(-0.2, 0.7, -1);
 
   // ---- lights ----
-  scene.add(new THREE.HemisphereLight(0xbfd0ff, 0x2a2338, 0.7));
-  const sun = new THREE.DirectionalLight(0xffd9b0, 2.2);
+  // Low warm sun + peach sky bounce + cool twilight fill = golden hour
+  scene.add(new THREE.HemisphereLight(0xffc9a3, 0x2e3a26, 0.55));
+  const sun = new THREE.DirectionalLight(0xffb377, 2.6);
   // We attach the sun to the camera later so it follows the player
-  sun.position.set(-8, 15, 6);
+  sun.position.set(-14, 10, 8);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(768, 768);
-  sun.shadow.camera.near = 1; sun.shadow.camera.far = 40;
-  sun.shadow.camera.left = -15; sun.shadow.camera.right = 15;
-  sun.shadow.camera.top = 15; sun.shadow.camera.bottom = -15;
+  sun.shadow.mapSize.set(512, 512);
+  sun.shadow.camera.near = 1; sun.shadow.camera.far = 70;
+  sun.shadow.camera.left = -18; sun.shadow.camera.right = 18;
+  sun.shadow.camera.top = 18; sun.shadow.camera.bottom = -18;
   sun.shadow.bias = -0.0004;
   scene.add(sun);
-  
-  const fillLight = new THREE.DirectionalLight(0x5c7bff, 0.5);
-  fillLight.position.set(5, 4, 5);
+
+  const fillLight = new THREE.DirectionalLight(0x7d8bff, 0.4);
+  fillLight.position.set(6, 5, 5);
   scene.add(fillLight);
 
   // ================= ROAD =================
@@ -95,26 +106,441 @@ export function initWorld(canvas) {
   for (let y = 0; y < 1024; y += 120) rc.fillRect(61, y, 6, 64); 
   const roadTex = new THREE.CanvasTexture(roadCanvas);
   roadTex.wrapS = roadTex.wrapT = THREE.RepeatWrapping;
-  roadTex.repeat.set(1, 100);
+  roadTex.repeat.set(1, 33);
   roadTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
   roadTex.colorSpace = THREE.SRGBColorSpace;
+
+  // The road is no longer a straight strip: roadX(z) gives the centerline's
+  // sideways drift at depth z — a right-hand sweep first, then a left-hand
+  // one — and everything in the world (bike, camera, buildings, props, river,
+  // grass) is laid out relative to this curve.
+  const ROAD_HALF_W = 4.5;
+  const LANE_X = -1.2; // bike's lane offset from the road centerline
+  function roadX(z) {
+    return -7 * Math.sin(z / 34);
+  }
+
+  // Builds a flat ribbon (y=0) that follows a centerline of {x,z} points.
+  // UVs run 0..1 across (u) and along (v) so tiling road/water textures work.
+  function buildRibbonGeo(centerline, width) {
+    const half = width / 2;
+    const pos = [], norm = [], uv = [], idx = [];
+    for (let i = 0; i < centerline.length; i++) {
+      const p = centerline[i];
+      const prev = centerline[Math.max(0, i - 1)];
+      const next = centerline[Math.min(centerline.length - 1, i + 1)];
+      let dx = next.x - prev.x, dz = next.z - prev.z;
+      const len = Math.hypot(dx, dz) || 1;
+      dx /= len; dz /= len;
+      const px = -dz, pz = dx; // ground-plane perpendicular
+      pos.push(p.x + px * half, 0, p.z + pz * half, p.x - px * half, 0, p.z - pz * half);
+      norm.push(0, 1, 0, 0, 1, 0);
+      const v = i / (centerline.length - 1);
+      uv.push(0, v, 1, v);
+      if (i > 0) {
+        const a = (i - 1) * 2;
+        idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); // CCW from above => up-facing
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("normal", new THREE.Float32BufferAttribute(norm, 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    return g;
+  }
+
+  const roadLine = [];
+  for (let z = 25; z >= -305; z -= 2.5) roadLine.push({ x: roadX(z), z });
   const road = new THREE.Mesh(
-    new THREE.PlaneGeometry(9, 1000),
-    new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.95, metalness: 0 })
+    buildRibbonGeo(roadLine, ROAD_HALF_W * 2),
+    new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.95, metalness: 0, side: THREE.DoubleSide })
   );
-  road.rotation.x = -Math.PI / 2;
-  road.position.z = -400; // Extend far forward
   road.receiveShadow = true;
   scene.add(road);
 
-  // grass verges
-  const grassMat = new THREE.MeshStandardMaterial({ color: 0x2f6b3a, roughness: 1 });
-  for (const sx of [-1, 1]) {
-    const g = new THREE.Mesh(new THREE.PlaneGeometry(80, 1000), grassMat);
-    g.rotation.x = -Math.PI / 2;
-    g.position.set(sx * 44, -0.02, -400);
-    g.receiveShadow = true;
-    scene.add(g);
+  // one big grass ground under everything (the curved road sits on top of it),
+  // canvas-painted with tonal patches + blade noise so it reads as a real
+  // meadow instead of a flat green sheet
+  const groundCanvas = document.createElement("canvas");
+  groundCanvas.width = groundCanvas.height = 512;
+  const gtx = groundCanvas.getContext("2d");
+  gtx.fillStyle = "#39602c"; gtx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 46; i++) { // large soft tonal patches
+    const px = Math.random() * 512, py = Math.random() * 512, pr = 30 + Math.random() * 90;
+    const tone = ["#2f5628", "#3c682f", "#456f33", "#33612c", "#5a7439"][(Math.random() * 5) | 0];
+    const rg = gtx.createRadialGradient(px, py, 0, px, py, pr);
+    rg.addColorStop(0, tone + "cc"); rg.addColorStop(1, tone + "00");
+    gtx.fillStyle = rg;
+    gtx.fillRect(px - pr, py - pr, pr * 2, pr * 2);
+  }
+  for (let i = 0; i < 14000; i++) { // fine blade speckle
+    const g = 70 + Math.random() * 80;
+    gtx.fillStyle = `rgba(${(g * 0.45) | 0},${g | 0},${(g * 0.4) | 0},${0.1 + Math.random() * 0.25})`;
+    gtx.fillRect(Math.random() * 512, Math.random() * 512, 1, 1 + Math.random() * 2);
+  }
+  const groundTex = new THREE.CanvasTexture(groundCanvas);
+  groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
+  groundTex.repeat.set(26, 118);
+  groundTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  groundTex.colorSpace = THREE.SRGBColorSpace;
+  const grassMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1, envMapIntensity: 0.25 });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(220, 1000), grassMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(0, -0.02, -400);
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // ================= RIVER SYSTEM (long winding river + branches, right side) =================
+  // A long main river starts just past the Projects section and follows the
+  // road's curves on the right side all the way down the course. Several
+  // branch streams split off it across the ground. Every river is a ribbon
+  // mesh over its own centerline; all centerline samples are collected in
+  // riverSamples so grass/flower placement can avoid the water.
+  const riverSamples = []; // { x, z, halfW } — exclusion zones for vegetation
+  const waterTextures = []; // one clone per river so each scrolls in the loop
+
+  // water surface texture: blue depth gradient + light ripple streaks; the
+  // texture offset is scrolled in the render loop so the river visibly flows
+  const waterCanvas = document.createElement("canvas");
+  waterCanvas.width = 128; waterCanvas.height = 512;
+  const wtx = waterCanvas.getContext("2d");
+  const wg = wtx.createLinearGradient(0, 0, 128, 0);
+  wg.addColorStop(0, "#123a5e"); wg.addColorStop(0.5, "#1e5d8f"); wg.addColorStop(1, "#123a5e");
+  wtx.fillStyle = wg; wtx.fillRect(0, 0, 128, 512);
+  for (let i = 0; i < 260; i++) {
+    wtx.fillStyle = `rgba(190, 230, 255, ${0.04 + Math.random() * 0.12})`;
+    wtx.fillRect(Math.random() * 128, Math.random() * 512, 8 + Math.random() * 26, 1.5);
+  }
+  const waterTexBase = new THREE.CanvasTexture(waterCanvas);
+  waterTexBase.wrapS = waterTexBase.wrapT = THREE.RepeatWrapping;
+  waterTexBase.colorSpace = THREE.SRGBColorSpace;
+
+  // rippled water normal map: canvas height-noise -> sobel filter. Per-river
+  // clones scroll at their own speed in the loop so the surface shimmers and
+  // catches moving sunset reflections.
+  const waterNormalTex = (() => {
+    const S = 256;
+    const hc = document.createElement("canvas"); hc.width = hc.height = S;
+    const hx = hc.getContext("2d");
+    hx.fillStyle = "#808080"; hx.fillRect(0, 0, S, S);
+    hx.filter = "blur(2px)";
+    for (let i = 0; i < 520; i++) {
+      const g = (90 + Math.random() * 110) | 0;
+      hx.fillStyle = `rgba(${g},${g},${g},0.5)`;
+      hx.beginPath();
+      hx.ellipse(Math.random() * S, Math.random() * S, 4 + Math.random() * 22, 1 + Math.random() * 5, Math.random() * Math.PI, 0, 6.3);
+      hx.fill();
+    }
+    hx.filter = "none";
+    const hd = hx.getImageData(0, 0, S, S).data;
+    const nc = document.createElement("canvas"); nc.width = nc.height = S;
+    const nx = nc.getContext("2d");
+    const out = nx.createImageData(S, S);
+    const hAt = (x, y) => hd[(((y + S) % S) * S + ((x + S) % S)) * 4];
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const dx = (hAt(x + 1, y) - hAt(x - 1, y)) / 255;
+      const dy = (hAt(x, y + 1) - hAt(x, y - 1)) / 255;
+      const i = (y * S + x) * 4;
+      out.data[i] = 127.5 + dx * 280;
+      out.data[i + 1] = 127.5 + dy * 280;
+      out.data[i + 2] = 255;
+      out.data[i + 3] = 255;
+    }
+    nx.putImageData(out, 0, 0);
+    const t = new THREE.CanvasTexture(nc);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  })();
+  const waterNormals = []; // { tex, speed } — scrolled in the render loop
+
+  const bankMat = new THREE.MeshStandardMaterial({ color: 0x70583a, roughness: 1, side: THREE.DoubleSide });
+
+  function makeRiver(points, waterW, lift = 0) {
+    // dirt bank sits just under the water so the river gets a soft earthy edge
+    // (lift raises branch streams a hair so junctions never z-fight the main river)
+    const bank = new THREE.Mesh(buildRibbonGeo(points, waterW + 1.4), bankMat);
+    bank.position.y = -0.012 + lift;
+    bank.receiveShadow = true;
+    scene.add(bank);
+
+    let len = 0;
+    for (let i = 1; i < points.length; i++) {
+      len += Math.hypot(points[i].x - points[i - 1].x, points[i].z - points[i - 1].z);
+    }
+    const tex = waterTexBase.clone();
+    tex.needsUpdate = true;
+    tex.repeat.set(1, Math.max(1, Math.round(len / 9)));
+    waterTextures.push(tex);
+
+    const nrm = waterNormalTex.clone();
+    nrm.needsUpdate = true;
+    nrm.repeat.set(2, Math.max(2, Math.round(len / 5)));
+    waterNormals.push({ tex: nrm, speed: 0.85 + Math.random() * 0.5 });
+
+    const water = new THREE.Mesh(
+      buildRibbonGeo(points, waterW),
+      new THREE.MeshStandardMaterial({
+        map: tex,
+        normalMap: nrm,
+        normalScale: new THREE.Vector2(0.55, 0.55),
+        color: 0xbfe2ff,
+        roughness: 0.08,
+        metalness: 0.25,
+        transparent: true,
+        opacity: 0.93,
+        emissive: 0x0d3752,
+        emissiveIntensity: 0.35,
+        envMapIntensity: 2.2,
+        side: THREE.DoubleSide
+      })
+    );
+    water.position.y = 0.004 + lift;
+    scene.add(water);
+
+    for (const p of points) riverSamples.push({ x: p.x, z: p.z, halfW: waterW / 2 + 0.9 });
+  }
+
+  // main river: enters after the Projects building (z ≈ -38) and meanders on
+  // the right verge for the whole ride, echoing the road's own curves
+  const mainRiverX = (z) => roadX(z) + 22 + 2.5 * Math.sin(z / 19 + 2.0);
+  const mainRiverPts = [];
+  for (let z = -38; z >= -300; z -= 3) mainRiverPts.push({ x: mainRiverX(z), z });
+  makeRiver(mainRiverPts, 3.4);
+
+  // branch streams: split off the main river and spread across the ground on
+  // the right, each with its own gentle bend
+  const branchDefs = [
+    { z: -55,  len: 26, head: -0.45, bend:  0.9 },
+    { z: -95,  len: 30, head:  0.35, bend: -0.8 },
+    { z: -140, len: 24, head: -0.55, bend:  0.8 },
+    { z: -185, len: 34, head:  0.25, bend: -0.9 },
+    { z: -235, len: 28, head: -0.40, bend:  0.7 },
+    { z: -270, len: 24, head:  0.30, bend: -0.6 },
+  ];
+  for (const b of branchDefs) {
+    const pts = [];
+    let x = mainRiverX(b.z), z = b.z, h = b.head;
+    const STEP = 2.4, steps = Math.ceil(b.len / STEP);
+    for (let i = 0; i <= steps; i++) {
+      pts.push({ x, z });
+      x += Math.cos(h) * STEP;
+      z += Math.sin(h) * STEP;
+      h += b.bend * (STEP / b.len);
+    }
+    makeRiver(pts, 2.0, 0.004);
+  }
+
+  // quick lookup so vegetation never spawns in the water
+  function inRiver(x, z) {
+    for (const s of riverSamples) {
+      const dz = z - s.z;
+      if (dz > s.halfW || dz < -s.halfW) continue;
+      const dx = x - s.x;
+      if (dx * dx + dz * dz < s.halfW * s.halfW) return true;
+    }
+    return false;
+  }
+
+  // rocks scattered along the banks of every river
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x5a5f6b, roughness: 0.95, flatShading: true });
+  for (let i = 0; i < 40; i++) {
+    const s = riverSamples[(Math.random() * riverSamples.length) | 0];
+    const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12 + Math.random() * 0.2, 0), rockMat);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    rock.position.set(
+      s.x + side * (s.halfW - 0.5 + Math.random() * 0.5),
+      0.02,
+      s.z + (Math.random() - 0.5) * 2
+    );
+    rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+    rock.castShadow = true;
+    scene.add(rock);
+  }
+
+  // ================= VEGETATION PLACEMENT HELPER =================
+  // The grass itself is now real modelled clumps from assets/grass_pack.glb,
+  // loaded further down (it needs the GLTF loader). This helper picks spots
+  // on the verge that follow the road's curve and skip every river.
+  function groundSpot(maxSpread, minOff = 0.7) {
+    for (let t = 0; t < 24; t++) {
+      const z = 20 - Math.random() * 315;
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const x = roadX(z) + side * (ROAD_HALF_W + minOff + Math.random() * maxSpread);
+      if (!inRiver(x, z)) return { x, z };
+    }
+    return null;
+  }
+  const _gDummy = new THREE.Object3D();
+
+  // ================= DRIFTING CLOUDS =================
+  // Soft procedural cumulus sprites high over the course, tinted by the low
+  // sun, drifting slowly sideways and wrapping around so the sky always moves.
+  function makeCloudTexture() {
+    const c = document.createElement("canvas");
+    c.width = 256; c.height = 128;
+    const x = c.getContext("2d");
+    const puffs = 16 + ((Math.random() * 10) | 0);
+    for (let i = 0; i < puffs; i++) {
+      const px = 40 + Math.random() * 176;
+      const py = 58 + (Math.random() - 0.5) * 34;
+      const pr = 14 + Math.random() * 26;
+      const g = x.createRadialGradient(px, py, pr * 0.1, px, py, pr);
+      const a = 0.1 + Math.random() * 0.16;
+      g.addColorStop(0, `rgba(255,255,255,${a})`);
+      g.addColorStop(0.65, `rgba(255,244,235,${a * 0.55})`);
+      g.addColorStop(1, "rgba(255,240,230,0)");
+      x.fillStyle = g;
+      x.fillRect(0, 0, 256, 128);
+    }
+    // shade the underside so the puffs read as lit-from-above clouds
+    const sh = x.createLinearGradient(0, 60, 0, 128);
+    sh.addColorStop(0, "rgba(0,0,0,0)");
+    sh.addColorStop(1, "rgba(120,90,110,0.2)");
+    x.globalCompositeOperation = "source-atop";
+    x.fillStyle = sh; x.fillRect(0, 0, 256, 128);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+  const cloudTexs = [makeCloudTexture(), makeCloudTexture(), makeCloudTexture()];
+  const clouds = [];
+  const CLOUD_COUNT = isMobile ? 10 : 20;
+  for (let i = 0; i < CLOUD_COUNT; i++) {
+    const z = 40 - (i / CLOUD_COUNT) * 400 + (Math.random() - 0.5) * 26;
+    const mat = new THREE.SpriteMaterial({
+      map: cloudTexs[i % 3],
+      transparent: true,
+      opacity: 0.5 + Math.random() * 0.38,
+      color: new THREE.Color().lerpColors(new THREE.Color(0xffffff), new THREE.Color(0xffc9a6), Math.random() * 0.65),
+      depthWrite: false,
+      fog: false,
+      rotation: (Math.random() - 0.5) * 0.25
+    });
+    const spr = new THREE.Sprite(mat);
+    const sx = 26 + Math.random() * 46;
+    spr.scale.set(sx, sx * (0.34 + Math.random() * 0.14), 1);
+    spr.position.set(roadX(z) + (Math.random() - 0.5) * 260, 34 + Math.random() * 42, z);
+    spr.userData = { speed: 0.55 + Math.random() * 1.1, baseZ: z };
+    scene.add(spr);
+    clouds.push(spr);
+  }
+
+  // ================= DISTANT MOUNTAIN RIDGES =================
+  // Layered silhouette ridges flanking the whole course — the warm dusk fog
+  // does the atmospheric-perspective work of fading them into the horizon.
+  function makeRidge(width, height, peaks, colorHex) {
+    const shape = new THREE.Shape();
+    shape.moveTo(-width / 2, 0);
+    for (let i = 0; i <= peaks; i++) {
+      const px = -width / 2 + (i / peaks) * width;
+      const py = (i === 0 || i === peaks) ? height * 0.12 : height * (0.35 + Math.random() * 0.65);
+      shape.lineTo(px - (width / peaks) * 0.22 * Math.random(), py);
+      if (i < peaks) shape.lineTo(px + (width / peaks) * (0.3 + Math.random() * 0.3), height * (0.1 + Math.random() * 0.22));
+    }
+    shape.lineTo(width / 2, 0);
+    shape.closePath();
+    return new THREE.Mesh(
+      new THREE.ShapeGeometry(shape),
+      new THREE.MeshBasicMaterial({ color: colorHex, fog: true })
+    );
+  }
+  // Ridges are flat silhouettes, so they must sit FAR off the verge — anchor
+  // each by its inner edge (never its centre) so the wide silhouette can never
+  // reach across the road. Base drops below ground and they face the camera
+  // squarely (no inward tilt) to stay a clean backdrop.
+  const RIDGE_INNER = 95; // minimum distance from road centre to a ridge's near edge
+  function placeRidge(width, height, peaks, colorHex, rz, side, zBack) {
+    const m = makeRidge(width, height, peaks, colorHex);
+    m.position.set(roadX(rz) + side * (RIDGE_INNER + width / 2), -3, rz - zBack);
+    scene.add(m);
+  }
+  const ridgeRows = isMobile ? 5 : 9;
+  for (let i = 0; i < ridgeRows; i++) {
+    const rz = 30 - (i / (ridgeRows - 1)) * 400;
+    for (const side of [-1, 1]) {
+      placeRidge(200 + Math.random() * 80, 26 + Math.random() * 16, 5, 0x5d4a72, rz, side, 60);
+      if (!isMobile && Math.random() < 0.7) {
+        placeRidge(140 + Math.random() * 60, 16 + Math.random() * 10, 4, 0x413352, rz, side, 30);
+      }
+    }
+  }
+  // big hazy ranges closing off the vista far behind the whole course; these
+  // sit well past the last building so they read purely as distant horizon
+  for (const [off, h, col] of [[-360, 48, 0x6b5580], [-420, 60, 0x7d6690]]) {
+    const back = makeRidge(600, h, 9, col);
+    back.position.set(roadX(-380), -4, off);
+    scene.add(back);
+  }
+
+  // ================= FAR CITY SKYLINE =================
+  // A ring of dark towers with lit windows far off both verges (one
+  // InstancedMesh) — the city this neon road belongs to.
+  const skylineCanvas = document.createElement("canvas");
+  skylineCanvas.width = 64; skylineCanvas.height = 128;
+  const skx = skylineCanvas.getContext("2d");
+  skx.fillStyle = "#141b29"; skx.fillRect(0, 0, 64, 128);
+  for (let wy = 4; wy < 124; wy += 7) {
+    for (let wx = 4; wx < 60; wx += 8) {
+      const r = Math.random();
+      skx.fillStyle = r < 0.22 ? "#ffd28a" : r < 0.3 ? "#9fc8ff" : "#1d2536";
+      skx.fillRect(wx, wy, 5, 4);
+    }
+  }
+  const skylineTex = new THREE.CanvasTexture(skylineCanvas);
+  skylineTex.colorSpace = THREE.SRGBColorSpace;
+  const towerSideMat = new THREE.MeshBasicMaterial({ map: skylineTex, fog: true });
+  const towerTopMat = new THREE.MeshBasicMaterial({ color: 0x10151f, fog: true });
+  const towerGeo = new THREE.BoxGeometry(1, 1, 1);
+  towerGeo.translate(0, 0.5, 0); // base sits on the ground
+  const TOWER_COUNT = isMobile ? 22 : 46;
+  const skyline = new THREE.InstancedMesh(
+    towerGeo,
+    [towerSideMat, towerSideMat, towerTopMat, towerTopMat, towerSideMat, towerSideMat],
+    TOWER_COUNT
+  );
+  skyline.frustumCulled = false;
+  for (let i = 0; i < TOWER_COUNT; i++) {
+    const tz = -6 - (i / TOWER_COUNT) * 330 + (Math.random() - 0.5) * 10;
+    const side = i % 2 ? 1 : -1;
+    _gDummy.position.set(roadX(tz) + side * (40 + Math.random() * 34), 0, tz);
+    _gDummy.rotation.y = Math.random() * 0.5 - 0.25;
+    _gDummy.scale.set(4 + Math.random() * 5, 9 + Math.random() * 19, 4 + Math.random() * 5);
+    _gDummy.updateMatrix();
+    skyline.setMatrixAt(i, _gDummy.matrix);
+  }
+  _gDummy.rotation.set(0, 0, 0);
+  _gDummy.scale.set(1, 1, 1);
+  scene.add(skyline);
+
+  // ================= BIRDS =================
+  // Small flocks gliding in lazy circles high over the course.
+  const birds = [];
+  const birdMat = new THREE.MeshBasicMaterial({ color: 0x201826, side: THREE.DoubleSide, fog: true });
+  const wingGeo = new THREE.BufferGeometry();
+  wingGeo.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 0.52, 0.1, 0.16, 0.52, 0.1, -0.16], 3));
+  wingGeo.computeVertexNormals();
+  const flockDefs = isMobile ? [{ z: -80 }] : [{ z: -45 }, { z: -135 }, { z: -225 }];
+  for (const f of flockDefs) {
+    for (let i = 0; i < 4; i++) {
+      const b = new THREE.Group();
+      const wl = new THREE.Mesh(wingGeo, birdMat);
+      const wr = new THREE.Mesh(wingGeo, birdMat);
+      wr.scale.x = -1;
+      b.add(wl, wr);
+      b.scale.setScalar(0.8 + Math.random() * 0.5);
+      scene.add(b);
+      birds.push({
+        g: b, wl, wr,
+        cx: roadX(f.z) + (Math.random() - 0.5) * 30,
+        cz: f.z + (Math.random() - 0.5) * 24,
+        y: 16 + Math.random() * 9,
+        r: 10 + Math.random() * 10,
+        sp: (0.08 + Math.random() * 0.07) * (Math.random() < 0.5 ? 1 : -1),
+        ph: Math.random() * 6.3,
+        flap: 7 + Math.random() * 4
+      });
+    }
   }
 
   // ================= SCENERY =================
@@ -141,6 +567,118 @@ export function initWorld(canvas) {
     customTreeModel2 = gltf.scene;
     prepareTreeModel(customTreeModel2, 5.8);
     replacePlaceholdersWithModel(customTreeModel2, "mesh_tree");
+  });
+
+  // ================= REALISTIC GRASS (grass_pack.glb, instanced) =================
+  // Real modelled grass clumps, wild grass, daisies, dandelions and clovers
+  // extracted from the downloaded grass pack. Every type is scattered as an
+  // InstancedMesh (one draw call per material) and swayed by a vertex-shader
+  // wind so the whole meadow visibly moves.
+  const windUniform = { value: 0 };
+  const grassMatCache = new Map(); // source material uuid -> cheap wind material
+  function windMaterialFor(srcMat) {
+    let mat = grassMatCache.get(srcMat.uuid);
+    if (mat) return mat;
+    // rebuild as plain MeshStandardMaterial: the pack ships physical materials
+    // (specular/ior) that cost too much for a full meadow
+    mat = new THREE.MeshStandardMaterial({
+      map: srcMat.map ?? null,
+      color: srcMat.color?.clone() ?? new THREE.Color(0xffffff),
+      roughness: 0.95,
+      metalness: 0,
+      side: THREE.DoubleSide,
+      envMapIntensity: 0.45
+    });
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uWindTime = windUniform;
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nuniform float uWindTime;")
+        .replace("#include <begin_vertex>", `#include <begin_vertex>
+{
+  float windPhase = 0.0;
+  #ifdef USE_INSTANCING
+    windPhase = instanceMatrix[3][0] * 0.6 + instanceMatrix[3][2] * 0.9;
+  #endif
+  float windBend = pow(max(position.y, 0.0), 1.5); // geometry is height-normalized
+  float windGust = sin(uWindTime * 1.7 + windPhase) + 0.45 * sin(uWindTime * 3.3 + windPhase * 1.6);
+  transformed.x += windGust * windBend * 0.06;
+  transformed.z += cos(uWindTime * 1.2 + windPhase) * windBend * 0.035;
+}`);
+    };
+    grassMatCache.set(srcMat.uuid, mat);
+    return mat;
+  }
+
+  // key = node name inside grass_pack.glb; h = world-height range;
+  // counts = [desktop, mobile]; outer = keep away from the road (dry fringe)
+  const GRASS_TYPES = [
+    { key: "grass_tiny",    h: [0.32, 0.55], counts: [50, 15] },
+    { key: "grass_med",     h: [0.5, 0.9],   counts: [25, 8] },
+    { key: "grass_clump_a", h: [0.45, 0.8],  counts: [20, 6] },
+    { key: "grass_clump_b", h: [0.55, 0.95], counts: [6, 2] },
+    { key: "grass_wild",    h: [0.6, 1.0],   counts: [12, 4] },
+    { key: "grass_duo",     h: [0.42, 0.75], counts: [20, 6] },
+    { key: "grass_dry",     h: [0.5, 0.85],  counts: [12, 4], outer: true },
+    { key: "daisies",       h: [0.3, 0.45],  counts: [8, 3] },
+    { key: "dandelion",     h: [0.34, 0.5],  counts: [15, 5] },
+    { key: "clover",        h: [0.22, 0.34], counts: [6, 2] },
+  ];
+
+  loader.load("/assets/grass_pack.glb", (gltf) => {
+    const pack = gltf.scene;
+    pack.updateMatrixWorld(true);
+    for (const t of GRASS_TYPES) {
+      const rootNode = pack.getObjectByName(t.key);
+      if (!rootNode) continue;
+      // bake every child mesh into root-local space
+      const rootInv = new THREE.Matrix4().copy(rootNode.matrixWorld).invert();
+      const prims = [];
+      rootNode.traverse(o => {
+        if (!o.isMesh) return;
+        const geo = o.geometry.clone()
+          .applyMatrix4(new THREE.Matrix4().multiplyMatrices(rootInv, o.matrixWorld));
+        prims.push({ geo, mat: windMaterialFor(o.material) });
+      });
+      if (!prims.length) continue;
+      // normalize: base on the ground, unit height, centered — so instance
+      // scale.y IS the world height and the wind shader sees y in 0..1
+      const box = new THREE.Box3();
+      for (const p of prims) { p.geo.computeBoundingBox(); box.union(p.geo.boundingBox); }
+      const size = box.getSize(new THREE.Vector3());
+      const ctr = box.getCenter(new THREE.Vector3());
+      const inv = 1 / Math.max(size.y, 0.001);
+      for (const p of prims) {
+        p.geo.translate(-ctr.x, -box.min.y, -ctr.z);
+        p.geo.scale(inv, inv, inv);
+      }
+      // one shared set of instance transforms per type: lush verge near the
+      // road plus scattered spread across the plains
+      const count = isMobile ? t.counts[1] : t.counts[0];
+      const mats4 = [];
+      for (let i = 0; i < count; i++) {
+        const spot = t.outer
+          ? groundSpot(26, 6)
+          : (Math.random() < 0.62 ? groundSpot(7, 0.5) : groundSpot(28, 6));
+        if (!spot) continue;
+        _gDummy.position.set(spot.x, -0.03, spot.z);
+        _gDummy.rotation.y = Math.random() * Math.PI * 2;
+        const hh = t.h[0] + Math.random() * (t.h[1] - t.h[0]);
+        _gDummy.scale.set(hh * (0.8 + Math.random() * 0.55), hh, hh * (0.8 + Math.random() * 0.55));
+        _gDummy.updateMatrix();
+        mats4.push(_gDummy.matrix.clone());
+      }
+      for (const p of prims) {
+        const im = new THREE.InstancedMesh(p.geo, p.mat, mats4.length);
+        for (let i = 0; i < mats4.length; i++) im.setMatrixAt(i, mats4[i]);
+        im.instanceMatrix.needsUpdate = true;
+        im.castShadow = false;
+        im.receiveShadow = false;
+        im.frustumCulled = false; // instances span the whole course
+        scene.add(im);
+      }
+    }
+    _gDummy.rotation.set(0, 0, 0);
+    _gDummy.scale.set(1, 1, 1);
   });
 
   function prepareTreeModel(model, targetHeight) {
@@ -530,13 +1068,13 @@ export function initWorld(canvas) {
     if (row.kind === "tree") {
       obj = makeTree(row.type);
       obj.userData.scale = row.scale;
-      obj.position.x = row.side * 10.5;
+      obj.position.x = roadX(row.z) + row.side * 10.5;
     } else if (row.kind === "lamp") {
       obj = makeLamp();
-      obj.position.x = row.side * 6.2;
+      obj.position.x = roadX(row.z) + row.side * 6.2;
     } else {
       obj = makeBuilding(false, 0);
-      obj.position.x = row.side * 24;
+      obj.position.x = roadX(row.z) + row.side * 24;
     }
     obj.position.z = row.z;
     obj.rotation.y = row.side < 0 ? Math.PI * 0.08 : -Math.PI * 0.08;
@@ -544,22 +1082,48 @@ export function initWorld(canvas) {
   }
 
   // Generate the 5 Main Fixed Buildings for the sections
-  // Alternating: Left, Right, Left, Right, Left
+  // Alternating: Left, Right, Left, Right, Left — offset from the curved road
   const stopPointsZ = [-30, -70, -110, -150, -190];
-  const sideX = [-14, 14, -14, 14, -14];
-  
+  const buildingSide = [-1, 1, -1, 1, -1];
+  const sectionGatePos = []; // entry gates — app.js opens a panel when the bike reaches one
+
   for(let i = 0; i < 5; i++) {
+    const bx = roadX(stopPointsZ[i]) + buildingSide[i] * 14;
     const building = makeBuilding(true, i);
-    building.position.set(sideX[i], 0, stopPointsZ[i]);
-    building.rotation.y = sideX[i] < 0 ? Math.PI/8 : -Math.PI/8;
+    building.position.set(bx, 0, stopPointsZ[i]);
+    building.rotation.y = buildingSide[i] < 0 ? Math.PI/8 : -Math.PI/8;
     scene.add(building);
-    
+
     // Add a spotlight illuminating the building in section-specific neon colors
     const colors = [0x00e0ff, 0x7a5cff, 0xff5c8a, 0x00ffcc, 0xffbe1a];
     const spot = new THREE.SpotLight(colors[i], 20, 35, Math.PI/3, 0.5, 1);
-    spot.position.set(sideX[i] * 0.4, 12, stopPointsZ[i] + 8);
+    spot.position.set(roadX(stopPointsZ[i] + 8) + buildingSide[i] * 5.6, 12, stopPointsZ[i] + 8);
     spot.target = building;
     scene.add(spot);
+
+    // glowing entry gate on the verge in front of each building: the player
+    // "enters" the section by riding through/near it (proximity handled in app.js)
+    const gate = new THREE.Group();
+    const gateColor = colors[i];
+    const gz = stopPointsZ[i] + 4;
+    const gx = roadX(gz) + buildingSide[i] * (ROAD_HALF_W + 1.6);
+    for (const s of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 3.2, 8), metalMatGate());
+      post.position.set(s * 1.7, 1.6, 0); post.castShadow = true; gate.add(post);
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10),
+        new THREE.MeshStandardMaterial({ color: gateColor, emissive: gateColor, emissiveIntensity: 3, roughness: 0.3 }));
+      orb.position.set(s * 1.7, 3.3, 0); gate.add(orb);
+    }
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.22, 0.22),
+      new THREE.MeshStandardMaterial({ color: gateColor, emissive: gateColor, emissiveIntensity: 2.2, roughness: 0.3 }));
+    lintel.position.y = 3.35; gate.add(lintel);
+    gate.position.set(gx, 0, gz);
+    gate.lookAt(roadX(gz), 0, gz);
+    scene.add(gate);
+    sectionGatePos.push({ x: gx, z: gz });
+  }
+  function metalMatGate() {
+    return new THREE.MeshStandardMaterial({ color: 0x262b36, metalness: 0.85, roughness: 0.35 });
   }
 
   // Scatter neon gadgets along the verges to bring the roadside to life.
@@ -568,7 +1132,7 @@ export function initWorld(canvas) {
     { z: -22,  side: -1, kind: "drone",    color: "#ff5c8a" },
     { z: -44,  side:  1, kind: "kiosk",    color: "#7a5cff" },
     { z: -50,  side: -1, kind: "bollards", color: "#00ffcc" },
-    { z: -66,  side:  1, kind: "hydrant",  color: "#ff5c8a" },
+    { z: -60,  side:  1, kind: "hydrant",  color: "#ff5c8a" },
     { z: -88,  side: -1, kind: "holo",     color: "#00ffcc", glyph: "✦" },
     { z: -98,  side:  1, kind: "drone",    color: "#00e0ff" },
     { z: -118, side: -1, kind: "kiosk",    color: "#ff5c8a" },
@@ -584,7 +1148,7 @@ export function initWorld(canvas) {
     else if (row.kind === "kiosk")    { obj = makeKiosk(row.color); x = row.side * 6.6; }
     else if (row.kind === "hydrant")  { obj = makeHydrant(row.color); x = row.side * 5.4; }
     else                              { obj = makeBollards(row.color); x = row.side * 4.7; }
-    obj.position.set(x, y, row.z);
+    obj.position.set(roadX(row.z) + x, y, row.z);
     obj.rotation.y = row.side < 0 ? Math.PI * 0.16 : -Math.PI * 0.16;
     scene.add(obj);
   }
@@ -1008,11 +1572,36 @@ export function initWorld(canvas) {
     }
   }
 
+  let isPaused = false;
+  let hasRenderedOnce = false;
+
+  // Gather all local PointLights and SpotLights for dynamic visibility optimization
+  const lightTracker = [];
+  scene.traverse(o => {
+    if (o.isPointLight || o.isSpotLight) {
+      const worldPos = new THREE.Vector3();
+      o.getWorldPosition(worldPos);
+      lightTracker.push({
+        light: o,
+        z: worldPos.z
+      });
+    }
+  });
+
   // ================= RENDER LOOP =================
   const clock = new THREE.Clock();
   let raf;
   function animate() {
     raf = requestAnimationFrame(animate);
+    if (isPaused && hasRenderedOnce) return;
+
+    // Only enable lights that are close to the bike to save GPU fragment shader processing
+    for (let i = 0; i < lightTracker.length; i++) {
+      const item = lightTracker[i];
+      const dist = Math.abs(item.z - currentBikeZ);
+      item.light.visible = dist < 50;
+    }
+
     const dt = clock.getDelta();
     const elapsed = clock.getElapsedTime();
     
@@ -1022,6 +1611,38 @@ export function initWorld(canvas) {
       for (const b of window.__beacons) {
         b.visible = blink;
       }
+    }
+
+    // River flow: scroll every river's water texture along its stream, and
+    // its ripple normal map slightly faster so the surface shimmers
+    for (const t of waterTextures) t.offset.y = elapsed * 0.12;
+    for (const wn of waterNormals) {
+      wn.tex.offset.y = elapsed * 0.22 * wn.speed;
+      wn.tex.offset.x = Math.sin(elapsed * 0.35) * 0.05;
+    }
+
+    // meadow wind
+    windUniform.value = elapsed;
+
+    // clouds drift sideways and wrap around the course
+    for (const c of clouds) {
+      c.position.x += c.userData.speed * dt;
+      if (c.position.x > roadX(c.userData.baseZ) + 170) c.position.x = roadX(c.userData.baseZ) - 170;
+    }
+
+    // birds circle, bob and flap
+    for (const b of birds) {
+      const a = elapsed * b.sp * 6.3 + b.ph;
+      const dx = -Math.sin(a) * Math.sign(b.sp), dz = Math.cos(a) * Math.sign(b.sp);
+      b.g.position.set(
+        b.cx + Math.cos(a) * b.r,
+        b.y + Math.sin(elapsed * 0.7 + b.ph) * 1.2,
+        b.cz + Math.sin(a) * b.r
+      );
+      b.g.rotation.y = Math.atan2(dx, dz);
+      const w = Math.sin(elapsed * b.flap + b.ph) * 0.55;
+      b.wl.rotation.z = w;
+      b.wr.rotation.z = -w;
     }
 
     // Roadside gadgets: holo signs sway + bob, drones hover + spin rotors + blink
@@ -1061,8 +1682,14 @@ export function initWorld(canvas) {
       d.rotation.x = lean;
     }
     
-    // Apply position
+    // Apply position along the curved road: the bike rides its lane on the
+    // centerline curve, steers to face the road's tangent and leans into turns
     bike.position.z = currentBikeZ;
+    bike.position.x = roadX(currentBikeZ) + LANE_X;
+    const aheadDX = roadX(currentBikeZ - 1) - roadX(currentBikeZ);
+    bike.rotation.y = Math.atan2(-aheadDX, 1);
+    const curv = roadX(currentBikeZ - 2) - 2 * roadX(currentBikeZ - 1) + roadX(currentBikeZ);
+    bike.rotation.z = THREE.MathUtils.clamp(-curv * 20, -0.15, 0.15) * Math.min(1, lastSpeed * 2);
 
     // ---- Pin the character to the bicycle ----
     // Runs after the mixer + bob/sway so it wins over the baked pose: hands stay
@@ -1071,7 +1698,7 @@ export function initWorld(canvas) {
     if (crankPivot) crankPivot.rotation.x = pedalAngle;   // spin the visible crank + pedals
     if (driverIK) {
       bike.updateMatrixWorld(true);
-      const ikIter = isMobile ? 4 : 6;
+      const ikIter = isMobile ? 2 : 4;
       // hands -> measured handlebar grips (bike-local -> world)
       if (driverIK.armL && gripLAnchor)
         solveCCD(driverIK.armL, bike.localToWorld(_ikTargetA.copy(gripLAnchor)), ikIter);
@@ -1086,17 +1713,28 @@ export function initWorld(canvas) {
     }
     
     // Move sun with bike so shadows stay crisp
-    sun.position.z = currentBikeZ + 6;
-    sun.target.position.set(0,0,currentBikeZ);
+    sun.position.x = roadX(currentBikeZ) - 14;
+    sun.position.z = currentBikeZ + 8;
+    sun.target.position.set(roadX(currentBikeZ), 0, currentBikeZ);
     sun.target.updateMatrixWorld();
 
-    // Camera follows the bike
+    // Camera follows the bike around the curves: it sits behind the bike on
+    // the road curve and looks at where the road is heading, so left/right
+    // turns read clearly on screen
+    const camRoadX = roadX(currentBikeZ + camOffset.z);
     camera.position.z = currentBikeZ + camOffset.z;
-    camera.position.x = camOffset.x;
+    camera.position.x = camRoadX + camOffset.x;
     camera.position.y = camOffset.y;
-    camera.lookAt(camLookOffset.x, camLookOffset.y, currentBikeZ + camLookOffset.z);
+    camera.lookAt(
+      roadX(currentBikeZ + camLookOffset.z) + camLookOffset.x,
+      camLookOffset.y,
+      currentBikeZ + camLookOffset.z
+    );
 
     renderer.render(scene, camera);
+    if (isPaused) {
+      hasRenderedOnce = true;
+    }
   }
   animate();
 
@@ -1106,8 +1744,21 @@ export function initWorld(canvas) {
     renderer.setSize(innerWidth, innerHeight);
   });
 
+  // Distance from the bike (at depth z) to a section's entry gate — app.js
+  // uses this to open a section panel only when the player actually arrives.
+  // Lateral offset is damped so gates on the left and right verge trigger at
+  // the same riding distance.
+  function distanceToSection(index, z = currentBikeZ) {
+    const g = sectionGatePos[index];
+    if (!g) return Infinity;
+    return Math.hypot((g.x - roadX(z)) * 0.4, g.z - z);
+  }
+
   return {
     setDistance,
+    distanceToSection,
+    pause() { isPaused = true; clock.stop(); },
+    resume() { isPaused = false; clock.start(); },
     destroy() { cancelAnimationFrame(raf); renderer.dispose(); }
   };
 }
