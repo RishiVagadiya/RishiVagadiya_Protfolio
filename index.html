@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=VT323&family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="css/style.css?v=41" />
+  <link rel="stylesheet" href="css/style.css?v=42" />
 
   <!-- Three.js via importmap (CDN modules) -->
   <script type="importmap">
@@ -76,13 +76,13 @@
 
       if (tapBtn && video) {
         var playAction = function(e) {
-          e.stopPropagation();
-          e.preventDefault();
           video.muted = false;
           var playPromise = video.play();
           if (playPromise !== undefined) {
             playPromise.catch(function(err) {
               console.warn("Video play failed:", err);
+              // Fallback: dismiss intro immediately if video refuses to play
+              window.dismissIntro(true);
             });
           }
           if (window.SFX && typeof window.SFX.unlock === "function") {
@@ -96,8 +96,7 @@
           }, 300);
         };
         tapBtn.addEventListener("click", playAction);
-        tapBtn.addEventListener("pointerdown", playAction);
-        tapBtn.addEventListener("touchstart", playAction, { passive: false });
+        tapBtn.addEventListener("touchstart", playAction, { passive: true });
 
         video.addEventListener("ended", function() {
           window.dismissIntro(true);

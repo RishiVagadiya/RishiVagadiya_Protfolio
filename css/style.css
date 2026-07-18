@@ -1310,10 +1310,10 @@ body.intro-active #loader {
  
 @keyframes pulseHighlight {
   0%, 100% {
-    transform: scale(1);
+    transform: translateX(-50%) scale(1);
   }
   50% {
-    transform: scale(1.04);
+    transform: translateX(-50%) scale(1.04);
   }
 }
 
