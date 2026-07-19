@@ -1,4 +1,8 @@
 {
+  "builds": [
+    { "src": "api/**/*.mjs", "use": "@vercel/node" },
+    { "src": "**", "use": "@vercel/static" }
+  ],
   "headers": [
     {
       "source": "/(.*)",
