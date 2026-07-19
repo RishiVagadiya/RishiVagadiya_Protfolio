@@ -7,10 +7,10 @@ const MODEL_SCALE = 1;
 const MODEL_Y = 0;
 
 // ---- Rider tuning (easy to nudge) ----
-const DRIVER_SCALE = 0.80;   // overall size of the character on the bike
+const DRIVER_SCALE = 0.82;   // overall size of the character on the bike
 const DRIVER_LEAN  = 0.66;   // total forward lean spread across the spine (radians)
 const NECK_LIFT    = 0.40;   // counter-tilt so the head keeps looking ahead
-const SEAT_SINK    = 0.05;   // how far the hips sit below the top of the saddle
+const SEAT_SINK    = 0.08;   // how far the hips sit below the top of the saddle
 const HAND_GRIP_DROP = 0.30; // grips sit this fraction below the top of the handlebar bbox
 const HAND_GRIP_BACK = 0.52; // grips sit this fraction toward the rear of the bar bbox
 const HAND_GRIP_INSET = 0.11;// pull grips in from the very tips of the bar
@@ -1698,7 +1698,7 @@ export function initWorld(canvas) {
     if (crankPivot) crankPivot.rotation.x = pedalAngle;   // spin the visible crank + pedals
     if (driverIK) {
       bike.updateMatrixWorld(true);
-      const ikIter = isMobile ? 2 : 4;
+      const ikIter = 10; // High iterations for perfectly smooth legs on all devices
       // hands -> measured handlebar grips (bike-local -> world)
       if (driverIK.armL && gripLAnchor)
         solveCCD(driverIK.armL, bike.localToWorld(_ikTargetA.copy(gripLAnchor)), ikIter);
