@@ -51,7 +51,7 @@ const server = http.createServer((req, res) => {
     req.on('data', (c) => { body += c; if (body.length > 64_000) req.destroy(); });
     req.on('end', async () => {
       try {
-        const mod = await import('./api/chat.js');
+        const mod = await import('./api/chat.mjs');
         const fakeReq = { method: 'POST', body: JSON.parse(body || '{}') };
         const fakeRes = {
           _status: 200,

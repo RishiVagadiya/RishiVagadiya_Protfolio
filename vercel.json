@@ -1,20 +1,4 @@
 {
-  "cleanUrls": true,
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/Car_Parking/(.*)", "destination": "/Car_Parking/$1" },
-    { "source": "/PATP/(.*)", "destination": "/PATP/$1" },
-    { "source": "/Fun_Traget/(.*)", "destination": "/Fun_Traget/$1" },
-    { "source": "/assets/(.*)", "destination": "/assets/$1" },
-    { "source": "/css/(.*)", "destination": "/css/$1" },
-    { "source": "/js/(.*)", "destination": "/js/$1" },
-    { "source": "/(.*\\.mp4)", "destination": "/$1" },
-    { "source": "/(.*\\.pdf)", "destination": "/$1" },
-    { "source": "/(.*\\.png)", "destination": "/$1" },
-    { "source": "/(.*\\.ico)", "destination": "/$1" },
-    { "source": "/(.*\\.wav)", "destination": "/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
   "headers": [
     {
       "source": "/(.*)",
