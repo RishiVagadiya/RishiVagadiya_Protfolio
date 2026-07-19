@@ -151,7 +151,7 @@ PROJECTS.forEach((p, i) => {
 
   const c = el(`
     <article class="card" data-sound="select" data-i="${i}" style="${borderStyle}">
-      ${p.previewVideo ? `<video class="card-preview-video" src="${p.previewVideo}" loop muted playsinline preload="none" style="border: 2px solid ${p.color}; ${p.title === 'Car Parking' ? 'left: -55%;' : p.title === 'Fish v/s Fisherman' ? 'left: -5%;' : ''}"></video>` : ''}
+      ${p.previewVideo ? `<video class="card-preview-video" src="${p.previewVideo}" loop muted playsinline preload="metadata" style="border: 2px solid ${p.color}; ${p.title === 'Car Parking' ? 'left: -55%;' : p.title === 'Fish v/s Fisherman' ? 'left: -5%;' : ''}"></video>` : ''}
       <div class="card-top" style="color: ${p.color};">
         <span class="emoji-label">${p.emoji}</span>
       </div>

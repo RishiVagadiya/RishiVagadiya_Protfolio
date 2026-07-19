@@ -96,7 +96,6 @@
           }, 300);
         };
         tapBtn.addEventListener("click", playAction);
-        tapBtn.addEventListener("touchstart", playAction, { passive: true });
 
         video.addEventListener("ended", function() {
           window.dismissIntro(true);
