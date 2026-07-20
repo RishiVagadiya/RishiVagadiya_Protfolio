@@ -1,6 +1,6 @@
 import { initLiquidName } from "./liquidText.js?v=12";
-import { initWorld } from "./world.js?v=16";
-import * as SFX from "./sound.js?v=12";
+import { initWorld } from "./world.js?v=17";
+import * as SFX from "./sound.js?v=13";
 
 /* -------------------- content -------------------- */
 const PROJECTS = [
@@ -151,7 +151,7 @@ PROJECTS.forEach((p, i) => {
 
   const c = el(`
     <article class="card" data-sound="select" data-i="${i}" style="${borderStyle}">
-      ${p.previewVideo ? `<video class="card-preview-video" src="${p.previewVideo}" loop muted playsinline preload="metadata" style="border: 2px solid ${p.color}; ${p.title === 'Car Parking' ? 'left: -55%;' : p.title === 'Fish v/s Fisherman' ? 'left: -5%;' : ''}"></video>` : ''}
+      ${p.previewVideo ? `<video class="card-preview-video" src="${p.previewVideo}" loop muted playsinline preload="none" style="border: 2px solid ${p.color}; ${p.title === 'Car Parking' ? 'left: -55%;' : p.title === 'Fish v/s Fisherman' ? 'left: -5%;' : ''}"></video>` : ''}
       <div class="card-top" style="color: ${p.color};">
         <span class="emoji-label">${p.emoji}</span>
       </div>
@@ -722,10 +722,10 @@ function generateLocalResponse(query) {
     return "👾 Rishi's featured projects include:\n\n1. Crowwed Color — 3D math running game.\n2. Zombie Killing Game — 3D action game with enemy AI.\n3. Consume AR — Spatial scanning mobile AR application.\n4. Car Parking — 3D car parking simulator (WebGL).\n5. Fish v/s Fisherman — WebGL fishing simulator.\n6. Fun Traget — WebGL target shooting game.\n7. Pogo Doggo — 2D physics platformer game.\n\nType the name of any project to hear more details!";
   }
   if (q.includes("contact") || q.includes("email") || q.includes("phone") || q.includes("call") || q.includes("mail") || q.includes("reach") || q.includes("social") || q.includes("linkedin") || q.includes("github")) {
-    return "👾 Here is how you can contact or connect with Rishi:\n\n• Email: Rishivagadiya613@gmail.com\n• Phone: +91 6352294215\n• Location: Ahmedabad, Gujarat, India\n• LinkedIn: linkedin.com/in/rishivagadiya\n• GitHub: github.com/RishiVagadiya";
+    return "👾 Here is how you can contact or connect with Rishi:\n\n• Email: gamedev@rishivagadiya.indevs.in\n• Phone: +91 6352294215\n• Location: Ahmedabad, Gujarat, India\n• LinkedIn: linkedin.com/in/rishivagadiya\n• GitHub: github.com/RishiVagadiya";
   }
   if (q.includes("experience") || q.includes("career") || q.includes("job") || q.includes("hire") || q.includes("resume") || q.includes("company") || q.includes("filaments") || q.includes("available")) {
-    return "👾 Rishi's professional career details:\n\n• Unity 3D Programmer at Virtual Filaments Pvt Ltd (Ahmedabad, India) — Present. Gameplay systems, AI, VFX/shaders and optimization.\n• 3D Game Developer (Remote) at ExoMatrix.\n\nHe is actively open to new Unity / C# opportunities (remote or relocation) and replies within 24 hours! Contact him at Rishivagadiya613@gmail.com or +91 6352294215.";
+    return "👾 Rishi's professional career details:\n\n• Unity 3D Programmer at Virtual Filaments Pvt Ltd (Ahmedabad, India) — Present. Gameplay systems, AI, VFX/shaders and optimization.\n• 3D Game Developer (Remote) at ExoMatrix.\n\nHe is actively open to new Unity / C# opportunities (remote or relocation) and replies within 24 hours! Contact him at gamedev@rishivagadiya.indevs.in or +91 6352294215.";
   }
   if (q.includes("education") || q.includes("college") || q.includes("degree") || q.includes("study") || q.includes("bca") || q.includes("university")) {
     return "👾 Rishi completed his BCA (Bachelor of Computer Applications) from Sssdiit, Junagadh, graduating in 2025.";

@@ -1,0 +1,15 @@
+# Local-only / desktop-game files that must never be uploaded to Vercel.
+# (The playable WebGL games — Car_Parking, PATP, Fun_Traget — ARE deployed.)
+node_modules
+scratch
+tools
+assets_src
+diff_app.txt
+D3D12
+MonoBleedingEdge
+Pogo Doggo_BurstDebugInformation_DoNotShip
+Pogo Doggo_Data
+*.exe
+*.dll
+bycycle driving sound.wav
+my video.mp4

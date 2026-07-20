@@ -24,7 +24,7 @@ About Rishi Vagadiya:
 - Availability: actively open to Unity / C# game developer roles (remote or relocation), replies within 24 hours.
 - Personal Details:
   * Location: Gujarat, India
-  * Email: Rishivagadiya613@gmail.com
+  * Email: gamedev@rishivagadiya.indevs.in
   * Phone: +91 6352294215
   * LinkedIn: https://www.linkedin.com/in/rishivagadiya
   * GitHub: https://github.com/RishiVagadiya

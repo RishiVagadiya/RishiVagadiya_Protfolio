@@ -13,11 +13,17 @@ async function loadDrivingSound() {
   if (drivingBuffer || isLoadingSound) return;
   isLoadingSound = true;
   try {
-    const res = await fetch("/bycycle_driving_sound.wav");
-    const arrayBuffer = await res.arrayBuffer();
-    drivingBuffer = await ctx.decodeAudioData(arrayBuffer);
-  } catch (err) {
-    console.error("Failed to load driving sound:", err);
+    // mp3 is ~10x smaller than the wav; keep the wav as a fallback
+    for (const url of ["/bycycle_driving_sound.mp3", "/bycycle_driving_sound.wav"]) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const arrayBuffer = await res.arrayBuffer();
+        drivingBuffer = await ctx.decodeAudioData(arrayBuffer);
+        break;
+      } catch (e) { /* try the next format */ }
+    }
+    if (!drivingBuffer) console.error("Failed to load driving sound");
   } finally {
     isLoadingSound = false;
   }

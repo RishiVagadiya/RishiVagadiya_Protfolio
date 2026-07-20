@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { Sky } from "three/addons/objects/Sky.js";
 
-const MODEL_URL = "/assets/bicycle_game_asset.glb";
+const MODEL_URL = "/assets/bicycle_game_asset.glb?v=2";
 const MODEL_SCALE = 1;
 const MODEL_Y = 0;
 
@@ -31,8 +32,13 @@ export function initWorld(canvas) {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = !isMobile;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  // The shadow map is redrawn manually from the render loop: every frame while
+  // riding, at a low refresh rate while standing still.
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = true;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
+  window.__renderer = renderer; // perf probes (tools/perf_test.mjs)
 
   const scene = new THREE.Scene();
 
@@ -67,7 +73,10 @@ export function initWorld(canvas) {
   scene.environment = pmrem.fromScene(envScene).texture;
   scene.add(sky); // re-parent the sky into the visible world
 
-  const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 900);
+  // Far plane just past the fog's opaque distance (195): anything further is
+  // pure fog colour anyway, so this culls the distant half of the course for
+  // free. The Sky shader pins its depth to the far plane, so it still renders.
+  const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 230);
   // Camera relative position to the bike will be maintained in the render loop
   // Adjusted: shifted right, lowered, and angled up to show full building tops (matching reference 2)
   const camOffset = new THREE.Vector3(-0.4, 2.0, 7.8);
@@ -107,7 +116,7 @@ export function initWorld(canvas) {
   const roadTex = new THREE.CanvasTexture(roadCanvas);
   roadTex.wrapS = roadTex.wrapT = THREE.RepeatWrapping;
   roadTex.repeat.set(1, 33);
-  roadTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  roadTex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
   roadTex.colorSpace = THREE.SRGBColorSpace;
 
   // The road is no longer a straight strip: roadX(z) gives the centerline's
@@ -182,7 +191,7 @@ export function initWorld(canvas) {
   const groundTex = new THREE.CanvasTexture(groundCanvas);
   groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
   groundTex.repeat.set(26, 118);
-  groundTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  groundTex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
   groundTex.colorSpace = THREE.SRGBColorSpace;
   const grassMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1, envMapIntensity: 0.25 });
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(220, 1000), grassMat);
@@ -553,20 +562,28 @@ export function initWorld(canvas) {
     }
   };
   const loader = new GLTFLoader(loadingManager);
+  // Models are meshopt-compressed (EXT_meshopt_compression) — tiny fast decoder
+  loader.setMeshoptDecoder(MeshoptDecoder);
   let ginkgoTreeModel = null;
   let customTreeModel2 = null;
   const treePlaceholders = [];
 
-  loader.load("/assets/ginkgo_tree.glb", (gltf) => {
+  // shadow refresh window: the loop keeps redrawing the shadow map while this
+  // is > 0 so late-arriving GLBs (bike, driver, trees) get shadows immediately
+  let shadowWarm = 90;
+
+  loader.load("/assets/ginkgo_tree.glb?v=2", (gltf) => {
     ginkgoTreeModel = gltf.scene;
     prepareTreeModel(ginkgoTreeModel, 5.2);
     replacePlaceholdersWithModel(ginkgoTreeModel, "ginkgo");
+    shadowWarm = 30;
   });
 
-  loader.load("/assets/tree_mesh.glb", (gltf) => {
+  loader.load("/assets/tree_mesh.glb?v=2", (gltf) => {
     customTreeModel2 = gltf.scene;
     prepareTreeModel(customTreeModel2, 5.8);
     replacePlaceholdersWithModel(customTreeModel2, "mesh_tree");
+    shadowWarm = 30;
   });
 
   // ================= REALISTIC GRASS (grass_pack.glb, instanced) =================
@@ -624,7 +641,12 @@ export function initWorld(canvas) {
     { key: "clover",        h: [0.22, 0.34], counts: [6, 2] },
   ];
 
-  loader.load("/assets/grass_pack.glb", (gltf) => {
+  // Grass is split into ~60-unit Z chunks; only chunks near the bike are drawn
+  // (culled from the render loop), so the far meadow costs nothing.
+  const grassChunks = []; // { mesh, z }
+  const GRASS_BIN = 60;
+
+  loader.load("/assets/grass_pack.glb?v=2", (gltf) => {
     const pack = gltf.scene;
     pack.updateMatrixWorld(true);
     for (const t of GRASS_TYPES) {
@@ -652,9 +674,10 @@ export function initWorld(canvas) {
         p.geo.scale(inv, inv, inv);
       }
       // one shared set of instance transforms per type: lush verge near the
-      // road plus scattered spread across the plains
+      // road plus scattered spread across the plains — binned into Z chunks so
+      // far chunks can be culled from the render loop
       const count = isMobile ? t.counts[1] : t.counts[0];
-      const mats4 = [];
+      const bins = new Map(); // binIndex -> matrices
       for (let i = 0; i < count; i++) {
         const spot = t.outer
           ? groundSpot(26, 6)
@@ -665,16 +688,21 @@ export function initWorld(canvas) {
         const hh = t.h[0] + Math.random() * (t.h[1] - t.h[0]);
         _gDummy.scale.set(hh * (0.8 + Math.random() * 0.55), hh, hh * (0.8 + Math.random() * 0.55));
         _gDummy.updateMatrix();
-        mats4.push(_gDummy.matrix.clone());
+        const bin = Math.round(spot.z / GRASS_BIN);
+        if (!bins.has(bin)) bins.set(bin, []);
+        bins.get(bin).push(_gDummy.matrix.clone());
       }
       for (const p of prims) {
-        const im = new THREE.InstancedMesh(p.geo, p.mat, mats4.length);
-        for (let i = 0; i < mats4.length; i++) im.setMatrixAt(i, mats4[i]);
-        im.instanceMatrix.needsUpdate = true;
-        im.castShadow = false;
-        im.receiveShadow = false;
-        im.frustumCulled = false; // instances span the whole course
-        scene.add(im);
+        for (const [bin, mats4] of bins) {
+          const im = new THREE.InstancedMesh(p.geo, p.mat, mats4.length);
+          for (let i = 0; i < mats4.length; i++) im.setMatrixAt(i, mats4[i]);
+          im.instanceMatrix.needsUpdate = true;
+          im.castShadow = false;
+          im.receiveShadow = false;
+          im.frustumCulled = false; // culled by distance in the render loop instead
+          scene.add(im);
+          grassChunks.push({ mesh: im, z: bin * GRASS_BIN });
+        }
       }
     }
     _gDummy.rotation.set(0, 0, 0);
@@ -737,7 +765,9 @@ export function initWorld(canvas) {
     head.position.set(0.4, 4.3, 0); g.add(head);
     const arm = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.08, 0.08),
       new THREE.MeshStandardMaterial({ color: 0x3a3f4a })); arm.position.set(0.2, 4.4, 0); g.add(arm);
-    const l = new THREE.PointLight(0xffcf9e, 6, 12); l.position.set(0.4, 4.2, 0); g.add(l);
+    if (!isMobile) { // mobile: the emissive head is glow enough — real point
+      const l = new THREE.PointLight(0xffcf9e, 6, 12); l.position.set(0.4, 4.2, 0); g.add(l);
+    }
     return g;
   }
 
@@ -773,7 +803,9 @@ export function initWorld(canvas) {
     holo.add(panel);
     const rim = new THREE.Mesh(new THREE.TorusGeometry(0.98, 0.03, 8, 4), neonMat(colorHex, 3.2));
     rim.rotation.z = Math.PI / 4; holo.add(rim);
-    const holoLight = new THREE.PointLight(colorHex, 2.6, 8); holoLight.position.set(0, 0, 0.5); holo.add(holoLight);
+    if (!isMobile) {
+      const holoLight = new THREE.PointLight(colorHex, 2.6, 8); holoLight.position.set(0, 0, 0.5); holo.add(holoLight);
+    }
     animatedProps.push({ obj: holo, kind: "holo", baseY: 3.05, phase: Math.random() * 6.28 });
     return g;
   }
@@ -812,7 +844,9 @@ export function initWorld(canvas) {
       const strip = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.05, 0.64), neonMat(colorHex, 2.6));
       strip.position.y = yy; g.add(strip);
     }
-    const light = new THREE.PointLight(colorHex, 2.4, 6); light.position.set(0, 1.4, 0.7); g.add(light);
+    if (!isMobile) {
+      const light = new THREE.PointLight(colorHex, 2.4, 6); light.position.set(0, 1.4, 0.7); g.add(light);
+    }
     return g;
   }
 
@@ -1295,22 +1329,37 @@ export function initWorld(canvas) {
   const _ikV1 = new THREE.Vector3(), _ikV2 = new THREE.Vector3(), _ikV3 = new THREE.Vector3();
   const _ikQ1 = new THREE.Quaternion(), _ikQ2 = new THREE.Quaternion(), _ikQ3 = new THREE.Quaternion();
   const _ikTargetA = new THREE.Vector3(), _ikTargetB = new THREE.Vector3();
+  const _ikP = new THREE.Vector3(), _ikS = new THREE.Vector3();
+  // Refresh world matrices for the chain bones only. Chain bones are direct
+  // parent->child links (built by walking .parent), and the parent of chain[0]
+  // is kept current by the caller's bike.updateMatrixWorld(true). Descendants
+  // outside the chain (finger bones etc.) are refreshed once by the renderer's
+  // own scene update at render time — recursing into them here is what made
+  // the old solver melt weak CPUs.
+  function updateChainWorld(chain, from) {
+    for (let j = from; j < chain.length; j++) {
+      const b = chain[j];
+      b.updateMatrix();
+      b.matrixWorld.multiplyMatrices(b.parent.matrixWorld, b.matrix);
+    }
+  }
   function solveCCD(chain, target, iterations = 5) {
     const effector = chain[chain.length - 1];
+    updateChainWorld(chain, 0);
     for (let it = 0; it < iterations; it++) {
       for (let i = chain.length - 2; i >= 0; i--) {
         const bone = chain[i];
-        effector.getWorldPosition(_ikV1);
-        bone.getWorldPosition(_ikV2);
+        _ikV1.setFromMatrixPosition(effector.matrixWorld);
+        _ikV2.setFromMatrixPosition(bone.matrixWorld);
         _ikV1.sub(_ikV2);
         _ikV3.copy(target).sub(_ikV2);
         if (_ikV1.lengthSq() < 1e-10 || _ikV3.lengthSq() < 1e-10) continue;
         _ikQ1.setFromUnitVectors(_ikV1.normalize(), _ikV3.normalize());
-        bone.getWorldQuaternion(_ikQ2);
-        _ikQ2.premultiply(_ikQ1);                    // desired world rotation
-        bone.parent.getWorldQuaternion(_ikQ3);
+        bone.matrixWorld.decompose(_ikP, _ikQ2, _ikS);        // current world rotation
+        _ikQ2.premultiply(_ikQ1);                             // desired world rotation
+        bone.parent.matrixWorld.decompose(_ikP, _ikQ3, _ikS);
         bone.quaternion.copy(_ikQ3.invert()).multiply(_ikQ2); // back to local space
-        bone.updateMatrixWorld(true);
+        updateChainWorld(chain, i);
       }
     }
   }
@@ -1424,7 +1473,7 @@ export function initWorld(canvas) {
       }
 
       // Load custom driver character
-      loader.load("/assets/driver.glb", (driverGltf) => {
+      loader.load("/assets/driver.glb?v=2", (driverGltf) => {
         const mDriver = driverGltf.scene;
 
         // Hide the procedural rider completely since we now have the 3D character!
@@ -1520,6 +1569,8 @@ export function initWorld(canvas) {
         if (window.__driverModel.mixer) {
           window.__driverModel.mixer.clipAction(window.__driverModel.clip).play();
         }
+        ikSettleFrames = 30; // pose just changed: let the IK converge, then rest
+        shadowWarm = 30;
       }, undefined, (err) => {
         console.error("Error loading driver model:", err);
       });
@@ -1527,6 +1578,7 @@ export function initWorld(canvas) {
       window.__bikeModel = { scene: m, mixer: gltf.animations.length ? new THREE.AnimationMixer(m) : null,
         clip: gltf.animations[0] };
       if (window.__bikeModel.mixer) window.__bikeModel.mixer.clipAction(window.__bikeModel.clip).play();
+      shadowWarm = 30;
     }, undefined, (err) => { console.error("Error loading model:", err); });
   }
 
@@ -1581,12 +1633,34 @@ export function initWorld(canvas) {
     if (o.isPointLight || o.isSpotLight) {
       const worldPos = new THREE.Vector3();
       o.getWorldPosition(worldPos);
+      o.visible = Math.abs(worldPos.z) < 50; // bike starts at z = 0
       lightTracker.push({
         light: o,
         z: worldPos.z
       });
     }
   });
+
+  // ---- adaptive quality ----
+  // A rolling frame-time check steps the internal resolution down on machines
+  // that can't keep a smooth rate, and back up when there is headroom. Mobile
+  // starts one tier down; fast phones climb back to full within seconds.
+  const QUALITY_PR = [1.0, 0.85, 0.7];
+  let qualityTier = isMobile ? 1 : 0;
+  const basePR = Math.min(window.devicePixelRatio || 1, 1.0);
+  function applyQuality() {
+    renderer.setPixelRatio(basePR * QUALITY_PR[qualityTier]);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    if (renderer.shadowMap.enabled) renderer.shadowMap.needsUpdate = true;
+  }
+  applyQuality();
+  let qSlow = 0, qFast = 0;
+
+  // rest / motion bookkeeping
+  let idleTime = 0, frameParity = 0, idleHalf = false;
+  let ikSettleFrames = 30; // IK frames left to run before resting
+  let prevFrameZ = 0;
+  let shadowTick = 0;
 
   // ================= RENDER LOOP =================
   const clock = new THREE.Clock();
@@ -1595,16 +1669,45 @@ export function initWorld(canvas) {
     raf = requestAnimationFrame(animate);
     if (isPaused && hasRenderedOnce) return;
 
-    // Only enable lights that are close to the bike to save GPU fragment shader processing
-    for (let i = 0; i < lightTracker.length; i++) {
-      const item = lightTracker[i];
-      const dist = Math.abs(item.z - currentBikeZ);
-      item.light.visible = dist < 50;
-    }
+    // While resting, render every other frame (~30fps ambience) — any riding
+    // input snaps back to full rate on the very next frame.
+    frameParity ^= 1;
+    if (idleHalf && frameParity) return;
 
     const dt = clock.getDelta();
     const elapsed = clock.getElapsedTime();
-    
+
+    const moving = lastSpeed > 0.002 || Math.abs(currentBikeZ - prevFrameZ) > 1e-4;
+    prevFrameZ = currentBikeZ;
+    if (moving) { idleTime = 0; if (ikSettleFrames < 10) ikSettleFrames = 10; }
+    else idleTime += dt;
+    idleHalf = idleTime > 1.5;
+
+    // Adaptive quality: judge frame times only at full rate (half-rate frames
+    // legitimately take twice as long).
+    if (!idleHalf && dt > 0 && dt < 0.5) {
+      if (dt > 0.026) { qSlow++; qFast = 0; }
+      else if (dt < 0.014) { qFast++; qSlow = 0; }
+      if (qSlow > 45 && qualityTier < QUALITY_PR.length - 1) { qualityTier++; qSlow = qFast = 0; applyQuality(); }
+      else if (qFast > 300 && qualityTier > 0) { qualityTier--; qSlow = qFast = 0; applyQuality(); }
+    }
+
+    // Near lights only, with hysteresis: the active-light set (and with it the
+    // compiled shader variant) changes rarely instead of at every metre
+    for (let i = 0; i < lightTracker.length; i++) {
+      const item = lightTracker[i];
+      const dist = Math.abs(item.z - currentBikeZ);
+      if (item.light.visible) { if (dist > 60) item.light.visible = false; }
+      else if (dist < 45) item.light.visible = true;
+    }
+
+    // grass chunks: only draw the meadow near the rider — distance and fog
+    // make the far chunks invisible anyway
+    for (let i = 0; i < grassChunks.length; i++) {
+      const g = grassChunks[i];
+      g.mesh.visible = Math.abs(g.z - currentBikeZ) < 100;
+    }
+
     // Blinking beacons
     if (window.__beacons) {
       const blink = Math.sin(elapsed * 8) > 0;
@@ -1661,11 +1764,13 @@ export function initWorld(canvas) {
     // Baked animations play proportionally to actual riding speed:
     // fully stopped => frozen wheels/pedals, faster ride => faster animation.
     const rideAnim = Math.min(2.5, lastSpeed * 1.5);
-    if (window.__bikeModel?.mixer) {
-      window.__bikeModel.mixer.update(dt * rideAnim);
-    }
-    if (window.__driverModel?.mixer) {
-      window.__driverModel.mixer.update(dt * rideAnim);
+    if (rideAnim > 0.001) { // stopped => frozen pose, skip the mixer work
+      if (window.__bikeModel?.mixer) {
+        window.__bikeModel.mixer.update(dt * rideAnim);
+      }
+      if (window.__driverModel?.mixer) {
+        window.__driverModel.mixer.update(dt * rideAnim);
+      }
     }
     
     // Alive dynamic animation: bobbing, swaying and leaning forward based on pedaling and speed.
@@ -1696,9 +1801,15 @@ export function initWorld(canvas) {
     // glued to the real handlebar grips and feet ride the actual pedals as the
     // crank rotates.
     if (crankPivot) crankPivot.rotation.x = pedalAngle;   // spin the visible crank + pedals
-    if (driverIK) {
+    // The solver runs while riding plus a short settle window after any pose
+    // change, then rests: at a standstill the grip/pedal targets are static,
+    // so the last solved pose stays valid and the CPU does nothing.
+    if (driverIK && ikSettleFrames > 0) {
+      ikSettleFrames--;
       bike.updateMatrixWorld(true);
-      const ikIter = 10; // High iterations for perfectly smooth legs on all devices
+      // CCD converges incrementally across frames — a few iterations per frame
+      // look identical to many, at a fraction of the CPU cost
+      const ikIter = isMobile ? 2 : 3;
       // hands -> measured handlebar grips (bike-local -> world)
       if (driverIK.armL && gripLAnchor)
         solveCCD(driverIK.armL, bike.localToWorld(_ikTargetA.copy(gripLAnchor)), ikIter);
@@ -1717,6 +1828,16 @@ export function initWorld(canvas) {
     sun.position.z = currentBikeZ + 8;
     sun.target.position.set(roadX(currentBikeZ), 0, currentBikeZ);
     sun.target.updateMatrixWorld();
+
+    // Shadow map: redraw continuously while riding; while resting only a slow
+    // ~5Hz refresh (just the bobbing props move) instead of every frame
+    if (renderer.shadowMap.enabled) {
+      shadowTick++;
+      if (moving || shadowWarm > 0 || shadowTick % 12 === 0) {
+        if (shadowWarm > 0) shadowWarm--;
+        renderer.shadowMap.needsUpdate = true;
+      }
+    }
 
     // Camera follows the bike around the curves: it sits behind the bike on
     // the road curve and looks at where the road is heading, so left/right
@@ -1741,7 +1862,7 @@ export function initWorld(canvas) {
   window.addEventListener("resize", () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
+    applyQuality(); // re-applies pixel ratio + size for the current tier
   });
 
   // Distance from the bike (at depth z) to a section's entry gate — app.js
